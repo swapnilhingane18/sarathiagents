@@ -190,6 +190,90 @@
                     "raw": "{\n  \"message\": \"Hi, I am Swapnil, 28 years old. I want a loan of 3 lakh for home renovation. My salary is 60000, PAN is ABCDE1234F, credit score 720, from Pune Maharashtra.\"\n}"
                 }
             }
+        },
+        {
+            "name": "TC07 — LoanAdvisor: Eligible for All Loans (High Salary + Good Score)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Ramesh Sharma\",\n  \"age\": 30,\n  \"loanAmount\": 500000,\n  \"purpose\": \"Home Renovation\",\n  \"monthlySalary\": 80000,\n  \"creditScore\": 750,\n  \"panNumber\": \"ABCDE1234F\",\n  \"aadhaarNumber\": \"123456789012\",\n  \"district\": \"Pune\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC08 — LoanAdvisor: Low Credit Score (590) — Only Gold Loan Eligible",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Priya Patil\",\n  \"age\": 28,\n  \"loanAmount\": 200000,\n  \"purpose\": \"Medical Emergency\",\n  \"monthlySalary\": 35000,\n  \"creditScore\": 590,\n  \"panNumber\": \"PQRST5678Z\",\n  \"aadhaarNumber\": \"987654321012\",\n  \"district\": \"Nashik\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC09 — LoanAdvisor: Low Salary (15000) — Only Education Loan Eligible",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Aarav Student\",\n  \"age\": 22,\n  \"loanAmount\": 150000,\n  \"purpose\": \"Education\",\n  \"monthlySalary\": 15000,\n  \"creditScore\": 650,\n  \"panNumber\": \"MNOPQ9012R\",\n  \"aadhaarNumber\": \"112233445566\",\n  \"district\": \"Nagpur\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
         }
     ]
 }

@@ -320,6 +320,144 @@ submission. Standard SARATHI terms and conditions apply.
 }
 
 // ============================================================
+//  AGENT 6 — LOAN ADVISOR AGENT
+//  What it does: Checks which loan products the applicant
+//  qualifies for based on salary, credit score, and age.
+//  Then recommends the BEST loan and calculates its EMI.
+//  If not eligible for anything, gives actionable tips.
+//
+//  Why banks use this logic:
+//  Real banks have a product catalogue. Each product has
+//  its own eligibility rules. Rather than just rejecting,
+//  a good system tells the customer WHAT they can get and
+//  HOW to improve their profile. This reduces churn and
+//  builds customer trust.
+//
+//  What to change later:
+//  - Pull loan products from a database (MongoDB/Postgres)
+//  - Add loan-specific interest rates per product
+//  - Add income proof verification per loan type
+//  - Run this FIRST (pre-screening) not after underwriting
+// ============================================================
+function loanAdvisorAgent(userData) {  // ADDED FOR HACKATHON
+    console.log('[Loan Advisor Agent] Checking loan eligibility...');
+
+    // --- Loan Product Catalogue ---
+    // Each loan has its own eligibility rules.
+    // In production, this array would come from a database.
+    const loanProducts = [
+        {
+            name: 'Personal Loan',
+            minSalary: 20000,
+            minCreditScore: 650,
+            maxAge: null,       // no age restriction
+            // What to modify later: fetch live rates from a rate-card database
+            interestRate: 14,   // % per annum — standard personal loan rate in India
+            tenureMonths: 36,   // 3-year standard tenure
+        },
+        {
+            name: 'Home Loan',
+            minSalary: 50000,
+            minCreditScore: 700,
+            maxAge: null,
+            interestRate: 8.5,
+            tenureMonths: 240, // 20 years
+        },
+        {
+            name: 'Education Loan',
+            minSalary: 0,       // no salary requirement (student)
+            minCreditScore: 0,  // no credit score needed
+            maxAge: 35,         // only for younger applicants
+            interestRate: 9.0,
+            tenureMonths: 84,   // 7 years
+        },
+        {
+            name: 'Gold Loan',
+            minSalary: 0,       // no salary requirement — gold is collateral
+            minCreditScore: 600,
+            maxAge: null,
+            interestRate: 10,   // % per annum — secured by gold asset
+            tenureMonths: 12,   // short tenure — gold loan is short-term by nature
+        },
+    ];
+
+    // --- Check eligibility for each product ---
+    const eligibleLoans = [];
+    const ineligibleReasons = {};
+
+    for (const product of loanProducts) {
+        const reasons = [];
+
+        if (userData.monthlySalary < product.minSalary)
+            reasons.push(`salary ₹${userData.monthlySalary} below required ₹${product.minSalary}`);
+
+        if (userData.creditScore < product.minCreditScore)
+            reasons.push(`credit score ${userData.creditScore} below required ${product.minCreditScore}`);
+
+        if (product.maxAge !== null && userData.age > product.maxAge)
+            reasons.push(`age ${userData.age} exceeds maximum ${product.maxAge}`);
+
+        if (reasons.length === 0) {
+            // Eligible — calculate EMI for this product
+            const emi = calculateEMI(userData.loanAmount, product.interestRate, product.tenureMonths);
+            eligibleLoans.push({ ...product, emi });
+        } else {
+            ineligibleReasons[product.name] = reasons;
+        }
+    }
+
+    // --- Pick the BEST loan (lowest EMI = most affordable) ---
+    let bestLoan = null;
+    let emiDetails = null;
+
+    if (eligibleLoans.length > 0) {
+        // Sort by EMI ascending — lowest monthly payment = best for customer
+        eligibleLoans.sort((a, b) => a.emi - b.emi);
+        bestLoan = eligibleLoans[0];
+        emiDetails = {
+            loanAmount: userData.loanAmount,
+            interestRate: bestLoan.interestRate,
+            tenureMonths: bestLoan.tenureMonths,
+            emi: bestLoan.emi,
+        };
+    }
+
+    // --- Improvement Tips ---
+    // If the user is not eligible for any loan, give specific advice.
+    // Why needed: Reducing rejections improves customer lifetime value.
+    const improvementTips = [];
+
+    if (ineligibleReasons['Personal Loan'] || ineligibleReasons['Gold Loan']) {
+        if (userData.creditScore < 650)
+            improvementTips.push('Pay all EMIs and credit card bills on time for 6 months to raise your credit score above 650.');
+        if (userData.creditScore < 600)
+            improvementTips.push('Reduce your existing loan burden. Multiple active loans lower your credit score.');
+    }
+    if (ineligibleReasons['Home Loan']) {
+        if (userData.monthlySalary < 50000)
+            improvementTips.push('For a Home Loan, add a co-applicant (spouse/parent) to combine incomes above ₹50,000/month.');
+        if (userData.creditScore < 700)
+            improvementTips.push('Improve credit score to at least 700 to qualify for a Home Loan.');
+    }
+    if (ineligibleReasons['Education Loan']) {
+        if (userData.age > 35)
+            improvementTips.push('Education Loan is available only up to age 35. Consider a Personal Loan instead.');
+    }
+    if (eligibleLoans.length === 0) {
+        improvementTips.push('You are currently not eligible for any loan. Fix KYC issues (invalid PAN/Aadhaar) first.');
+        improvementTips.push('Wait 3–6 months while improving credit score, then reapply.');
+    }
+
+    return {
+        eligibleLoans: eligibleLoans.map(l => l.name),
+        bestLoan: bestLoan ? bestLoan.name : null,
+        emiDetails,
+        improvementTips,
+        ineligibleReasons,  // useful for debugging / frontend display
+    };
+}
+
+// ============================================================
 //  MASTER AGENT — ORCHESTRATOR
 //  What it does: Routes request through all agents in order.
 //  If any agent rejects, the chain stops immediately.
@@ -342,7 +480,12 @@ async function masterAgent(userData) {
     if (step4.status === 'REJECTED') return step4;
 
     const step5 = sanctionAgent(userData, step4.emi, step4.risk);
-    return step5;
+
+    // ADDED FOR HACKATHON — run LoanAdvisorAgent after approval
+    // It always runs so the user knows what ELSE they qualify for.
+    const loanAdvice = loanAdvisorAgent(userData);
+
+    return { ...step5, loanAdvice };
 }
 
 // ============================================================
@@ -396,9 +539,23 @@ app.post('/api/chat', async (req, res) => {  // ADDED async — HACKATHON
         complianceLog(userData.name, userData.panNumber || 'N/A', finalDecision.status, finalDecision.reason || '');
 
         if (finalDecision.status === 'COMPLETED') {
-            return res.status(200).json({ success: true, message: 'Loan Approved!', sanctionLetter: finalDecision.letter });
+            // ADDED FOR HACKATHON — include loanAdvice in approval response
+            return res.status(200).json({
+                success: true,
+                message: 'Loan Approved!',
+                sanctionLetter: finalDecision.letter,
+                loanAdvice: finalDecision.loanAdvice || null,
+            });
         } else {
-            return res.status(200).json({ success: false, message: 'Loan Rejected', reason: finalDecision.reason });
+            // ADDED FOR HACKATHON — run LoanAdvisorAgent even on rejection so
+            // the user sees what they CAN get and how to improve.
+            const loanAdvice = loanAdvisorAgent(userData);
+            return res.status(200).json({
+                success: false,
+                message: 'Loan Rejected',
+                reason: finalDecision.reason,
+                loanAdvice,
+            });
         }
 
     } catch (error) {

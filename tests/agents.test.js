@@ -107,3 +107,102 @@ test('TC07: Missing name and loanAmount should return 400', async () => {
     expect(res.body.errors).toBeDefined();
     expect(res.body.errors.length).toBeGreaterThan(0);
 });
+
+// -------------------------------------------------------
+// TEST 8 (LoanAdvisor): Good applicant → multiple loans eligible
+// Scenario: salary=80000, creditScore=750, age=30
+// Expected: eligible for Personal, Home, Education, Gold Loan
+//           bestLoan is selected and EMI is calculated
+// -------------------------------------------------------
+test('TC08: Good applicant should be eligible for multiple loans with bestLoan selected', async () => {
+    const goodApplicant = {
+        name: 'Ramesh Sharma',
+        age: 30,
+        loanAmount: 500000,
+        purpose: 'Home Renovation',
+        monthlySalary: 80000,   // qualifies for both Personal (≥20k) and Home (≥50k)
+        creditScore: 750,       // qualifies for Personal (≥650), Home (≥700), Gold (≥600)
+        panNumber: 'ABCDE1234F',
+        aadhaarNumber: '123456789012',
+        district: 'Pune',
+        state: 'Maharashtra',
+    };
+    const res = await request(app).post('/api/chat').send(goodApplicant);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    // LoanAdvisor must fire and include loanAdvice in response
+    expect(res.body.loanAdvice).toBeDefined();
+    // Multiple loans must be eligible
+    expect(res.body.loanAdvice.eligibleLoans.length).toBeGreaterThan(1);
+    // A best loan must be selected
+    expect(res.body.loanAdvice.bestLoan).not.toBeNull();
+    // EMI must be calculated for the best loan
+    expect(res.body.loanAdvice.emiDetails).toBeDefined();
+    expect(res.body.loanAdvice.emiDetails.emi).toBeGreaterThan(0);
+    console.log('[TC08] Eligible loans:', res.body.loanAdvice.eligibleLoans);
+    console.log('[TC08] Best loan:', res.body.loanAdvice.bestLoan, '| EMI: ₹', res.body.loanAdvice.emiDetails.emi);
+});
+
+// -------------------------------------------------------
+// TEST 9 (LoanAdvisor): Low credit (580) → rejected by pipeline
+//                        Only Education Loan would have been eligible
+// Scenario: credit score 580 < 650 → rejected by verificationAgent
+//           loanAdvisorAgent still runs and must show Education Loan eligible
+//           (Education Loan has no credit score minimum)
+// -------------------------------------------------------
+test('TC09: Low credit applicant should see Education Loan as eligible in loanAdvice', async () => {
+    const lowCreditApplicant = {
+        name: 'Priya Patil',
+        age: 25,                // age ≤ 35 → qualifies for Education Loan
+        loanAmount: 200000,
+        purpose: 'Education',
+        monthlySalary: 35000,
+        creditScore: 580,       // below 650 → rejected by pipeline
+        panNumber: 'PQRST5678Z',
+        aadhaarNumber: '987654321012',
+        district: 'Mumbai',
+        state: 'Maharashtra',
+    };
+    const res = await request(app).post('/api/chat').send(lowCreditApplicant);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(false);           // main pipeline rejects
+    expect(res.body.reason).toMatch(/credit score/i);
+    // But loanAdvice must still appear (runs on rejection path)
+    expect(res.body.loanAdvice).toBeDefined();
+    // Education Loan has no credit score minimum, so it must still be eligible
+    expect(res.body.loanAdvice.eligibleLoans).toContain('Education Loan');
+    console.log('[TC09] Eligible despite rejection:', res.body.loanAdvice.eligibleLoans);
+});
+
+// -------------------------------------------------------
+// TEST 10 (LoanAdvisor): Low salary (12000) → improvement tips returned
+// Scenario: salary 12000 is below minimum for Personal (20k) and Home (50k)
+//           Gold Loan also needs creditScore ≥ 600
+//           Education Loan (age ≤ 35) may be the only option
+//           improvementTips must be returned with actionable advice
+// -------------------------------------------------------
+test('TC10: Low salary applicant should receive improvement tips in loanAdvice', async () => {
+    const lowSalaryApplicant = {
+        name: 'Student Kumar',
+        age: 22,
+        loanAmount: 100000,
+        purpose: 'Business',
+        monthlySalary: 12000,   // below Personal Loan min (20k) and Home Loan min (50k)
+        creditScore: 620,       // qualifies for Gold (≥600) but not Personal (≥650)
+        panNumber: 'KLMNO6789P',
+        aadhaarNumber: '112233445566',
+        district: 'Nagpur',
+        state: 'Maharashtra',
+    };
+    const res = await request(app).post('/api/chat').send(lowSalaryApplicant);
+    expect(res.statusCode).toBe(200);
+    // May be approved or rejected depending on pipeline — we only test loanAdvice
+    expect(res.body.loanAdvice).toBeDefined();
+    // Improvement tips must be present because salary is too low for major loans
+    expect(Array.isArray(res.body.loanAdvice.improvementTips)).toBe(true);
+    expect(res.body.loanAdvice.improvementTips.length).toBeGreaterThan(0);
+    // ineligibleReasons must explain why Personal and Home Loan were denied
+    expect(res.body.loanAdvice.ineligibleReasons).toBeDefined();
+    console.log('[TC10] Improvement tips:', res.body.loanAdvice.improvementTips);
+});
+
