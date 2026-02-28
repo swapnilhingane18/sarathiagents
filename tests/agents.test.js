@@ -86,7 +86,7 @@ test('TC05: Loan exceeding salary limit should be rejected by underwriting', asy
     const res = await request(app).post('/api/chat').send({ ...validPayload, loanAmount: 100000000 });
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(false);
-    expect(res.body.reason).toMatch(/max allowed/i);
+    expect(res.body.reason).toMatch(/maximum loan of/i);
 });
 
 // -------------------------------------------------------
@@ -206,3 +206,101 @@ test('TC10: Low salary applicant should receive improvement tips in loanAdvice',
     console.log('[TC10] Improvement tips:', res.body.loanAdvice.improvementTips);
 });
 
+// -------------------------------------------------------
+// TEST 11: EMI Consistency — sanction letter EMI must equal loanAdvice EMI
+// Why needed: Previously the two EMIs were different because SanctionAgent
+// used hardcoded 10.5%/36mo while LoanAdvisor used real product rates.
+// This test proves the mismatch is fixed.
+// -------------------------------------------------------
+test('TC11: EMI in sanction letter must match EMI in loanAdvice', async () => {
+    const res = await request(app).post('/api/chat').send(validPayload);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Both must exist
+    expect(res.body.sanctionLetter).toBeDefined();
+    expect(res.body.loanAdvice.emiDetails).toBeDefined();
+
+    const advisorEMI = res.body.loanAdvice.emiDetails.emi;
+    const letterRate = res.body.loanAdvice.emiDetails.interestRate;
+    const letterMonths = res.body.loanAdvice.emiDetails.tenureMonths;
+
+    // The sanction letter text must contain the same EMI as loanAdvice
+    // We format it the Indian way (e.g. "4,339") to match the letter template
+    const formattedEMI = advisorEMI.toLocaleString('en-IN');
+    expect(res.body.sanctionLetter).toContain(formattedEMI);
+
+    // The sanction letter must also show the correct rate and tenure from bestLoan
+    expect(res.body.sanctionLetter).toContain(`${letterRate}%`);
+    expect(res.body.sanctionLetter).toContain(`${letterMonths} Months`);
+
+    console.log(`[TC11] Advisor EMI: ₹${advisorEMI} | Rate: ${letterRate}% | Tenure: ${letterMonths}mo`);
+    console.log(`[TC11] Sanction letter contains matching EMI: ✓`);
+});
+
+// -------------------------------------------------------
+// TEST 12: Changing loanAmount changes BOTH EMIs consistently
+// -------------------------------------------------------
+test("TC12: EMI must match sanction letter for different loan amounts", async () => {
+
+    const smallLoan = await request(app)
+        .post("/api/chat")
+        .send({ ...validPayload, loanAmount: 100000 });
+
+    const largeLoan = await request(app)
+        .post("/api/chat")
+        .send({ ...validPayload, loanAmount: 800000 });
+
+    const emiSmall = smallLoan.body.loanAdvice?.emiDetails?.emi;
+    const emiLarge = largeLoan.body.loanAdvice?.emiDetails?.emi;
+
+    expect(emiSmall).toBeGreaterThan(0);
+    expect(emiLarge).toBeGreaterThan(0);
+
+    expect(smallLoan.body.loanAdvice.bestLoan).toBeDefined();
+    expect(largeLoan.body.loanAdvice.bestLoan).toBeDefined();
+
+    expect(smallLoan.body.sanctionLetter).toContain(
+        emiSmall.toLocaleString("en-IN")
+    );
+    expect(largeLoan.body.sanctionLetter).toContain(
+        emiLarge.toLocaleString("en-IN")
+    );
+});
+
+
+// -------------------------------------------------------
+// TEST 13: Minimum loan amount — loans below product minimum are ineligible
+// Scenario: loanAmount = ₹10,000 (below all minimums except none)
+//   Gold Loan min = ₹20,000  → ineligible
+//   Personal Loan min = ₹50,000 → ineligible
+//   Home Loan min = ₹5,00,000 → ineligible
+//   Education Loan min = ₹1,00,000 → ineligible
+// Expected: no eligible loans, ineligibleReasons includes min amount reason
+// -------------------------------------------------------
+test('TC13: Loan amount below product minimum should mark that product as ineligible', async () => {
+    const tinyLoanApplicant = {
+        ...validPayload,
+        loanAmount: 10000,  // below all product minimums
+    };
+    const res = await request(app).post('/api/chat').send(tinyLoanApplicant);
+    expect(res.statusCode).toBe(200);
+
+    // loanAdvice must be present (runs on both approval and rejection)
+    expect(res.body.loanAdvice).toBeDefined();
+
+    const { ineligibleReasons } = res.body.loanAdvice;
+    expect(ineligibleReasons).toBeDefined();
+
+    // Gold Loan (min ₹20,000) must flag loanAmount as the reason
+    expect(ineligibleReasons['Gold Loan']).toBeDefined();
+    const goldReasons = ineligibleReasons['Gold Loan'].join(' ');
+    expect(goldReasons).toMatch(/below the minimum required/i);
+
+    // Personal Loan (min ₹50,000) must also be ineligible due to amount
+    expect(ineligibleReasons['Personal Loan']).toBeDefined();
+    const personalReasons = ineligibleReasons['Personal Loan'].join(' ');
+    expect(personalReasons).toMatch(/below the minimum required/i);
+
+    console.log('[TC13] Ineligible reasons for ₹10,000 request:', ineligibleReasons);
+});

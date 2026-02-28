@@ -187,8 +187,11 @@ function validateInput(data) {  // ADDED FOR HACKATHON
     const errors = [];
     if (!data.name || typeof data.name !== 'string' || data.name.trim() === '')
         errors.push('name is required and must be a non-empty string.');
-    if (!data.loanAmount || typeof data.loanAmount !== 'number' || data.loanAmount <= 0)
-        errors.push('loanAmount must be a positive number.');
+    // loanAmount is now OPTIONAL — if absent, system will suggest maximum eligible amount
+    if (data.loanAmount !== undefined && data.loanAmount !== null) {
+        if (typeof data.loanAmount !== 'number' || data.loanAmount <= 0)
+            errors.push('loanAmount, if provided, must be a positive number.');
+    }
     if (!data.monthlySalary || typeof data.monthlySalary !== 'number' || data.monthlySalary <= 0)
         errors.push('monthlySalary must be a positive number.');
     if (data.age === undefined || data.age < 18 || data.age > 80)
@@ -208,8 +211,20 @@ function validateInput(data) {  // ADDED FOR HACKATHON
 // ============================================================
 function salesAgent(userData) {
     console.log('[Sales Agent] Analyzing requirements...');
-    if (!userData.loanAmount || !userData.purpose) {
-        return { status: 'REJECTED', reason: 'Missing loan amount or purpose.' };
+
+    // If loanAmount is not provided, compute the maximum the user can take
+    // based on their salary. This is real banking logic:
+    // max loan = monthly salary × 120 (i.e., 10 years of income)
+    // What to change later: Apply product-specific multipliers per loan type.
+    if (!userData.loanAmount) {
+        const maxLoan = userData.monthlySalary * 10 * 12;
+        userData.loanAmount = maxLoan;     // set into userData so pipeline continues
+        userData._autoLoanAmount = true;   // flag so API can tell the user this was computed
+        console.log(`[Sales Agent] No loan amount provided — suggesting max eligible: ₹${maxLoan.toLocaleString('en-IN')}`);
+    }
+
+    if (!userData.purpose) {
+        return { status: 'REJECTED', reason: 'Missing loan purpose. Please tell us why you need the loan.' };
     }
     return { status: 'APPROVED', data: userData };
 }
@@ -270,16 +285,24 @@ function kycAgent(userData) {
 function underwritingAgent(userData) {
     console.log('[Underwriting Agent] Evaluating repayment capacity...');
 
-    const maxAllowedLoan = userData.monthlySalary * 10 * 12; // annual income × 10
+    // Maximum loan = 10× annual salary (standard Indian banking norm)
+    // What to change later: Use debt-to-income ratio with actual liabilities.
+    const maxAllowedLoan = userData.monthlySalary * 10 * 12;
+
     if (userData.loanAmount > maxAllowedLoan) {
-        return { status: 'REJECTED', reason: `Loan ₹${userData.loanAmount} exceeds max allowed ₹${maxAllowedLoan} for your salary.` };
+        // UPDATED: human-friendly rejection — tells user exactly what they CAN take
+        return {
+            status: 'REJECTED',
+            reason: `Your requested loan amount ₹${userData.loanAmount.toLocaleString('en-IN')} is too high. Based on your monthly salary of ₹${userData.monthlySalary.toLocaleString('en-IN')}, you are eligible for a maximum loan of ₹${maxAllowedLoan.toLocaleString('en-IN')}. Please reapply with a lower amount.`,
+            maxAllowedLoan,  // expose for frontend display
+        };
     }
 
     // ADDED FOR HACKATHON — compute risk metrics
     const emi = calculateEMI(userData.loanAmount, 10.5, 36);
     const risk = calculateRiskScore(userData);
 
-    return { status: 'APPROVED', emi, risk };
+    return { status: 'APPROVED', emi, risk, maxAllowedLoan };
 }
 
 // ============================================================
@@ -287,11 +310,25 @@ function underwritingAgent(userData) {
 //  What it does: Generates official sanction letter text.
 //  Why needed: The sanction letter is a legally binding offer.
 //  It states the terms the borrower must agree to.
+//
+//  UPDATED: Now accepts bestLoanDetails from LoanAdvisorAgent
+//  so the letter always matches the recommended product.
+//
 //  What to change later: Use PDFKit to generate a signed PDF,
 //  then email via Nodemailer/SendGrid.
 // ============================================================
-function sanctionAgent(userData, emi, risk) {
-    console.log('[Sanction Agent] Generating Sanction Letter...');
+function sanctionAgent(userData, bestLoanDetails, risk) {
+    // UPDATED — now uses bestLoan terms, not hardcoded values
+    console.log('[Sanction Agent] Using best loan terms for sanction letter...');
+
+    // Re-calculate EMI using bestLoan's rate and tenure for full accuracy
+    // Why: LoanAdvisor already computed this, but we recalculate here to
+    // guarantee the sanction letter is self-consistent.
+    const emi = calculateEMI(
+        userData.loanAmount,
+        bestLoanDetails.interestRate,
+        bestLoanDetails.tenureMonths
+    );
 
     const letter = `
 ========================================================
@@ -304,10 +341,11 @@ We are pleased to sanction your loan application.
   Applicant        : ${userData.name}
   District / State : ${userData.district || 'N/A'} / ${userData.state || 'N/A'}
   Loan Purpose     : ${userData.purpose}
+  Loan Product     : ${bestLoanDetails.name}
 
   Approved Amount  : ₹${userData.loanAmount.toLocaleString('en-IN')}
-  Interest Rate    : 10.5% p.a. (reducing balance)
-  Tenure           : 36 Months
+  Interest Rate    : ${bestLoanDetails.interestRate}% p.a. (reducing balance)
+  Tenure           : ${bestLoanDetails.tenureMonths} Months
   Monthly EMI      : ₹${emi.toLocaleString('en-IN')}
   Risk Score       : ${risk}/100 (lower = safer)
 
@@ -316,7 +354,7 @@ submission. Standard SARATHI terms and conditions apply.
 
 ========================================================`;
 
-    return { status: 'COMPLETED', letter };
+    return { status: 'COMPLETED', letter, emi };
 }
 
 // ============================================================
@@ -348,38 +386,61 @@ function loanAdvisorAgent(userData) {  // ADDED FOR HACKATHON
     const loanProducts = [
         {
             name: 'Personal Loan',
+            minAmount: 50000,   // banks don't issue personal loans below ₹50,000
             minSalary: 20000,
             minCreditScore: 650,
-            maxAge: null,       // no age restriction
-            // What to modify later: fetch live rates from a rate-card database
-            interestRate: 14,   // % per annum — standard personal loan rate in India
-            tenureMonths: 36,   // 3-year standard tenure
+            maxAge: null,
+            interestRate: 14,
+            tenureMonths: 36,
         },
         {
             name: 'Home Loan',
+            minAmount: 500000,  // housing loan ticket size starts at ₹5,00,000
             minSalary: 50000,
             minCreditScore: 700,
             maxAge: null,
             interestRate: 8.5,
-            tenureMonths: 240, // 20 years
+            tenureMonths: 240,
         },
         {
             name: 'Education Loan',
-            minSalary: 0,       // no salary requirement (student)
-            minCreditScore: 0,  // no credit score needed
-            maxAge: 35,         // only for younger applicants
+            minAmount: 100000,  // covers at least one year of tuition
+            minSalary: 0,
+            minCreditScore: 0,
+            maxAge: 35,
             interestRate: 9.0,
-            tenureMonths: 84,   // 7 years
+            tenureMonths: 84,
         },
         {
             name: 'Gold Loan',
-            minSalary: 0,       // no salary requirement — gold is collateral
+            minAmount: 20000,   // minimum gold pledgeable value
+            minSalary: 0,
             minCreditScore: 600,
             maxAge: null,
-            interestRate: 10,   // % per annum — secured by gold asset
-            tenureMonths: 12,   // short tenure — gold loan is short-term by nature
+            interestRate: 10,
+            tenureMonths: 12,
         },
     ];
+
+    // --- Purpose Mapping ---
+    // Why banks match loan purpose:
+    // Banks must comply with RBI end-use guidelines. A Home Loan disbursed
+    // for personal expenses is a regulatory violation. Purpose matching
+    // ensures the loan product aligns with the borrower's stated need,
+    // which also reduces fraud and misuse of funds.
+    //
+    // What to change later:
+    // Move this map to a database so product managers can update keywords
+    // without a code deployment. Consider multi-language keyword support.
+    const purposeKeywords = {
+        'Personal Loan': ['medical', 'travel', 'wedding', 'emergency', 'personal', 'other'],
+        'Home Loan': ['home', 'house', 'renovation', 'property', 'construction'],
+        'Education Loan': ['education', 'college', 'study', 'fees', 'course', 'degree'],
+        'Gold Loan': null,  // null = allowed for ANY purpose (collateral-based loan)
+    };
+
+    // Normalise purpose to lowercase for case-insensitive matching
+    const userPurpose = (userData.purpose || '').toLowerCase().trim();
 
     // --- Check eligibility for each product ---
     const eligibleLoans = [];
@@ -387,6 +448,9 @@ function loanAdvisorAgent(userData) {  // ADDED FOR HACKATHON
 
     for (const product of loanProducts) {
         const reasons = [];
+
+        if (userData.loanAmount < product.minAmount)
+            reasons.push(`loan amount ₹${userData.loanAmount.toLocaleString('en-IN')} is below the minimum required ₹${product.minAmount.toLocaleString('en-IN')} for ${product.name}`);
 
         if (userData.monthlySalary < product.minSalary)
             reasons.push(`salary ₹${userData.monthlySalary} below required ₹${product.minSalary}`);
@@ -397,6 +461,17 @@ function loanAdvisorAgent(userData) {  // ADDED FOR HACKATHON
         if (product.maxAge !== null && userData.age > product.maxAge)
             reasons.push(`age ${userData.age} exceeds maximum ${product.maxAge}`);
 
+        // --- Purpose check ---
+        // null keywords means the product accepts any purpose (e.g. Gold Loan)
+        const allowedKeywords = purposeKeywords[product.name];
+        if (allowedKeywords !== null) {
+            const purposeMatches = allowedKeywords.some(kw => userPurpose.includes(kw));
+            if (!purposeMatches) {
+                reasons.push(`loan purpose "${userData.purpose}" does not match this product. ` +
+                    `Accepted purposes: ${allowedKeywords.join(', ')}`);
+            }
+        }
+
         if (reasons.length === 0) {
             // Eligible — calculate EMI for this product
             const emi = calculateEMI(userData.loanAmount, product.interestRate, product.tenureMonths);
@@ -406,13 +481,21 @@ function loanAdvisorAgent(userData) {  // ADDED FOR HACKATHON
         }
     }
 
-    // --- Pick the BEST loan (lowest EMI = most affordable) ---
+    // --- Pick the BEST loan ---
+    // Selection criteria (in order of priority):
+    //  1. Lowest interest rate  → saves the most money over the loan lifetime
+    //  2. Shortest tenure       → tie-breaker; shorter = less interest paid overall
+    // Why changed from lowest EMI:
+    //  Lowest EMI can mislead — a 20-year loan has a tiny EMI but costs far
+    //  more in total interest. Lowest rate is the more honest recommendation.
     let bestLoan = null;
     let emiDetails = null;
 
     if (eligibleLoans.length > 0) {
-        // Sort by EMI ascending — lowest monthly payment = best for customer
-        eligibleLoans.sort((a, b) => a.emi - b.emi);
+        eligibleLoans.sort((a, b) => {
+            if (a.interestRate !== b.interestRate) return a.interestRate - b.interestRate; // lowest rate first
+            return a.tenureMonths - b.tenureMonths;                                         // shorter tenure as tie-breaker
+        });
         bestLoan = eligibleLoans[0];
         emiDetails = {
             loanAmount: userData.loanAmount,
@@ -479,11 +562,24 @@ async function masterAgent(userData) {
     const step4 = underwritingAgent(userData);
     if (step4.status === 'REJECTED') return step4;
 
-    const step5 = sanctionAgent(userData, step4.emi, step4.risk);
-
-    // ADDED FOR HACKATHON — run LoanAdvisorAgent after approval
-    // It always runs so the user knows what ELSE they qualify for.
+    // UPDATED ORDER: LoanAdvisor runs BEFORE Sanction so we know the best loan
+    // product BEFORE generating the letter. This ensures EMI consistency.
+    // Why needed in banking: The sanction letter is a legal document — the terms
+    // it shows must exactly match what the system decided to offer.
     const loanAdvice = loanAdvisorAgent(userData);
+
+    // Build the bestLoanDetails object to pass into sanctionAgent.
+    // If no loan is eligible (edge case), fall back to underwriting values.
+    const bestLoanDetails = loanAdvice.bestLoan
+        ? {
+            name: loanAdvice.bestLoan,
+            interestRate: loanAdvice.emiDetails.interestRate,
+            tenureMonths: loanAdvice.emiDetails.tenureMonths,
+        }
+        : { name: 'Standard Loan', interestRate: 10.5, tenureMonths: 36 };  // safe fallback
+
+    // SanctionAgent now uses bestLoan terms — no more hardcoded rate/tenure
+    const step5 = sanctionAgent(userData, bestLoanDetails, step4.risk);
 
     return { ...step5, loanAdvice };
 }
@@ -540,22 +636,33 @@ app.post('/api/chat', async (req, res) => {  // ADDED async — HACKATHON
 
         if (finalDecision.status === 'COMPLETED') {
             // ADDED FOR HACKATHON — include loanAdvice in approval response
-            return res.status(200).json({
+            const approvalResponse = {
                 success: true,
                 message: 'Loan Approved!',
                 sanctionLetter: finalDecision.letter,
                 loanAdvice: finalDecision.loanAdvice || null,
-            });
+            };
+            // If loanAmount was not provided, tell the user we used the max suggested value
+            if (userData._autoLoanAmount) {
+                approvalResponse.note = `No loan amount was specified. SARATHI applied for the maximum you are eligible for: ₹${userData.loanAmount.toLocaleString('en-IN')}.`;
+                approvalResponse.suggestedMaxLoan = userData.loanAmount;
+            }
+            return res.status(200).json(approvalResponse);
         } else {
             // ADDED FOR HACKATHON — run LoanAdvisorAgent even on rejection so
             // the user sees what they CAN get and how to improve.
             const loanAdvice = loanAdvisorAgent(userData);
-            return res.status(200).json({
+            const rejectionResponse = {
                 success: false,
                 message: 'Loan Rejected',
                 reason: finalDecision.reason,
                 loanAdvice,
-            });
+            };
+            // If underwriting rejected due to loan being too high, surface the max allowed
+            if (finalDecision.maxAllowedLoan) {
+                rejectionResponse.maxAllowedLoan = finalDecision.maxAllowedLoan;
+            }
+            return res.status(200).json(rejectionResponse);
         }
 
     } catch (error) {
