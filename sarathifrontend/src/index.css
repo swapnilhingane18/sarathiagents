@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: 210 20% 98%;
+    --color-bg-secondary: 210 20% 96%;
+    --color-surface-1: 0 0% 100%;
+    --color-surface-2: 210 20% 98%;
+    --color-primary: 221 83% 53%;
+    --color-primary-hover: 221 83% 48%;
+    --color-primary-foreground: 0 0% 100%;
+    --color-text: 222 47% 11%;
+    --color-text-muted: 215 16% 47%;
+    --color-border: 214 32% 91%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-bg text-text antialiased;
+  }
+}
