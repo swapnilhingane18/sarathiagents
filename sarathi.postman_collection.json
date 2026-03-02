@@ -1,0 +1,279 @@
+{
+    "info": {
+        "name": "SARATHI Loan Multi-Agent API",
+        "description": "Postman collection for testing the SARATHI Loan Chatbot backend.",
+        "_postman_id": "sarathi-collection-v1",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Health Check",
+            "request": {
+                "method": "GET",
+                "url": {
+                    "raw": "http://localhost:5000/",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        ""
+                    ]
+                }
+            }
+        },
+        {
+            "name": "TC01 — Approve Valid Applicant",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Swapnil Hingane\",\n  \"age\": 28,\n  \"loanAmount\": 300000,\n  \"purpose\": \"Home Renovation\",\n  \"monthlySalary\": 60000,\n  \"creditScore\": 720,\n  \"panNumber\": \"ABCDE1234F\",\n  \"aadhaarNumber\": \"123456789012\",\n  \"district\": \"Pune\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC02 — Reject: Low Credit Score (580)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Test User\",\n  \"age\": 28,\n  \"loanAmount\": 300000,\n  \"purpose\": \"Education\",\n  \"monthlySalary\": 60000,\n  \"creditScore\": 580,\n  \"panNumber\": \"ABCDE1234F\",\n  \"district\": \"Mumbai\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC03 — Reject: Fake PAN",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Fraud User\",\n  \"age\": 30,\n  \"loanAmount\": 200000,\n  \"purpose\": \"Car Loan\",\n  \"monthlySalary\": 40000,\n  \"creditScore\": 700,\n  \"panNumber\": \"FAKE1234XX\",\n  \"district\": \"Nagpur\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC04 — Reject: Loan Too High for Salary",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"High Loan User\",\n  \"age\": 35,\n  \"loanAmount\": 50000000,\n  \"purpose\": \"Business\",\n  \"monthlySalary\": 30000,\n  \"creditScore\": 750,\n  \"panNumber\": \"ABCDE1234F\",\n  \"district\": \"Nashik\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC05 — Reject: Age Out of Range (>60)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Senior User\",\n  \"age\": 65,\n  \"loanAmount\": 200000,\n  \"purpose\": \"Medical\",\n  \"monthlySalary\": 50000,\n  \"creditScore\": 700,\n  \"panNumber\": \"ABCDE1234F\",\n  \"district\": \"Aurangabad\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC06 — Gemini NLP Chat Message",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"message\": \"Hi, I am Swapnil, 28 years old. I want a loan of 3 lakh for home renovation. My salary is 60000, PAN is ABCDE1234F, credit score 720, from Pune Maharashtra.\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC07 — LoanAdvisor: Eligible for All Loans (High Salary + Good Score)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Ramesh Sharma\",\n  \"age\": 30,\n  \"loanAmount\": 500000,\n  \"purpose\": \"Home Renovation\",\n  \"monthlySalary\": 80000,\n  \"creditScore\": 750,\n  \"panNumber\": \"ABCDE1234F\",\n  \"aadhaarNumber\": \"123456789012\",\n  \"district\": \"Pune\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC08 — LoanAdvisor: Low Credit Score (590) — Only Gold Loan Eligible",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Priya Patil\",\n  \"age\": 28,\n  \"loanAmount\": 200000,\n  \"purpose\": \"Medical Emergency\",\n  \"monthlySalary\": 35000,\n  \"creditScore\": 590,\n  \"panNumber\": \"PQRST5678Z\",\n  \"aadhaarNumber\": \"987654321012\",\n  \"district\": \"Nashik\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        },
+        {
+            "name": "TC09 — LoanAdvisor: Low Salary (15000) — Only Education Loan Eligible",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "url": {
+                    "raw": "http://localhost:5000/api/chat",
+                    "protocol": "http",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "5000",
+                    "path": [
+                        "api",
+                        "chat"
+                    ]
+                },
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"name\": \"Aarav Student\",\n  \"age\": 22,\n  \"loanAmount\": 150000,\n  \"purpose\": \"Education\",\n  \"monthlySalary\": 15000,\n  \"creditScore\": 650,\n  \"panNumber\": \"MNOPQ9012R\",\n  \"aadhaarNumber\": \"112233445566\",\n  \"district\": \"Nagpur\",\n  \"state\": \"Maharashtra\"\n}"
+                }
+            }
+        }
+    ]
+}
